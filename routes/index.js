@@ -1,0 +1,25 @@
+const express = require('express');
+
+const router = express.Router();
+
+const userRouters = require('./users');
+const movieRouters = require('./movies');
+const auth = require('../middlewares/auth');
+const NotFoundError = require('../errors/notFound-error');
+const { validationCreateUser, validationLogin } = require('../middlewares/validation');
+const { createUser, login, logout } = require('../controllers/users');
+
+router.post('/signup', validationCreateUser, createUser);
+router.post('/signin', validationLogin, login);
+
+router.use(auth);
+
+router.use('/users', userRouters);
+router.use('/movies', movieRouters);
+router.post('/signout', logout);
+
+router.use('*', auth, (req, res, next) => {
+  next(new NotFoundError('Запрашиваемый ресурс не найден'));
+});
+
+module.exports = router;
