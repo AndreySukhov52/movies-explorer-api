@@ -28,7 +28,13 @@ app.use(express.json())
 app.use(cookieParser())
 app.use(
   cors({
-    origin: BASE_URL,
+    origin: ['http://localhost:3001',
+    'http://localhost:3000',
+    'https://api.diplom-sukhov.nomoredomains.rocks',
+    'http://api.diplom-sukhov.nomoredomains.rocks',
+    'https://diplom-sukhov.nomoredomains.rocks',
+    'http://diplom-sukhov.nomoredomains.rocks',
+  ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     preflightContinue: false,
     optionsSuccessStatus: 204,
