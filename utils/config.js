@@ -7,7 +7,7 @@ if (process.env.NODE_ENV === 'production') {
 const {
   PORT = 3000,
   DB_PATH = 'mongodb://127.0.0.1:27017/bitfilmsdb',
-  BASE_URL = 'http://localhost',
+  BASE_URL = 'https://api.diplom-sukhov.nomoredomains.rocks',
   JWT_SECRET = process.env.NODE_ENV === 'production'
     ? process.env.JWT_SECRET
     : '85353ab2edfacd45adcb8a9b27c3187df2663355dba48fdb23d0c2184246881a',
