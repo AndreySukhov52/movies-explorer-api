@@ -1,49 +1,55 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const validator = require('validator');
-const { Unauthorized } = require('http-errors');
+const mongoose = require('mongoose')
+const { isEmail } = require('validator')
+const bcrypt = require('bcryptjs')
+const { UnauthorizedError } = require('../utils/errors')
+const { DEFAULT_ERROR_MESSAGES } = require('../utils/consts')
+const { VALIDATION_MESSAGES } = require('../utils/consts')
 
-const userSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    unique: true,
-    required: true,
-    validate: {
-      validator: (v) => validator.isEmail(v),
-      message: 'Некорректный email',
+const userSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, VALIDATION_MESSAGES.USER],
+      minlength: [2, VALIDATION_MESSAGES.USER],
+      maxlength: [30, VALIDATION_MESSAGES.USER],
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      validate: {
+        validator: isEmail,
+        message: VALIDATION_MESSAGES.EMAIL.BAD,
+      },
+    },
+    password: {
+      type: String,
+      required: true,
+      select: false,
     },
   },
-  password: {
-    type: String,
-    required: true,
-    select: false,
-  },
-  name: {
-    type: String,
-    minlength: 2,
-    maxlength: 30,
-    required: true,
-  },
-});
+  { versionKey: false }
+)
 
-userSchema.statics.findUserByCredentials = function findUserByCredentials(email, password) {
-  /* Ищем пользователя по почте **/
-  return this.findOne({ email }).select('+password')
+// eslint-disable-next-line func-names
+userSchema.statics.findUserByCredentials = function (email, password) {
+  return this.findOne({ email })
+    .select('+password')
     .then((user) => {
-      /* Не нашелся - отклоняем промис **/
       if (!user) {
-        return Promise.reject(new Unauthorized('Неправильный email или пароль.'));
+        return Promise.reject(
+          new UnauthorizedError(DEFAULT_ERROR_MESSAGES.BAD_CREDENTIALS)
+        )
       }
-      /* нашелся -сравниваем хэши **/
-      return bcrypt.compare(password, user.password)
-        .then((matched) => {
-          if (!matched) {
-            return Promise.reject(new Unauthorized('Неправильный email или пароль.'));
-          }
-          /*  user доступен **/
-          return user;
-        });
-    });
-};
+      return bcrypt.compare(password, user.password).then((matched) => {
+        if (!matched) {
+          return Promise.reject(
+            new UnauthorizedError(DEFAULT_ERROR_MESSAGES.BAD_CREDENTIALS)
+          )
+        }
+        return user
+      })
+    })
+}
 
-module.exports = mongoose.model('user', userSchema);
+module.exports = mongoose.model('user', userSchema)

@@ -1,25 +1,25 @@
-const express = require('express');
+const router = require('express').Router()
+const auth = require('../middlewares/auth')
+const usersRouter = require('./users')
+const moviesRouter = require('./movies')
+const { NotFoundError } = require('../utils/errors')
+const {
+  validationLogin,
+  validationCreateUser,
+} = require('../middlewares/validations')
+const { login, createUser, logout } = require('../controllers/users')
 
-const router = express.Router();
+router.post('/signin', validationLogin, login)
+router.post('/signup', validationCreateUser, createUser)
 
-const userRouters = require('./users');
-const movieRouters = require('./movies');
-const auth = require('../middlewares/auth');
-const NotFoundError = require('../errors/notFound-error');
-const { validationCreateUser, validationLogin } = require('../middlewares/validation');
-const { createUser, login, logout } = require('../controllers/users');
+router.use(auth)
 
-router.post('/signup', validationCreateUser, createUser);
-router.post('/signin', validationLogin, login);
+router.post('/signout', logout)
+router.use('/users', usersRouter)
+router.use('/movies', moviesRouter)
 
-router.use(auth);
+router.use((req, res, next) => {
+  next(new NotFoundError())
+})
 
-router.use('/users', userRouters);
-router.use('/movies', movieRouters);
-router.post('/signout', logout);
-
-router.use('*', auth, (req, res, next) => {
-  next(new NotFoundError('Запрашиваемый ресурс не найден'));
-});
-
-module.exports = router;
+module.exports = router

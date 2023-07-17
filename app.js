@@ -1,54 +1,58 @@
-require('dotenv').config();
-const express = require('express');
-const mongoose = require('mongoose');
-const { errors } = require('celebrate');
-const cors = require('cors');
-const helmet = require('helmet');
-const cookieParser = require('cookie-parser');
-const { MONGO_URL, PORT } = require('./utils/config');
-const errorHandler = require('./middlewares/errorHandler');
-const { requestLogger, errorLogger } = require('./middlewares/logger');
-const limiter = require('./middlewares/limiter');
-const routes = require('./routes/index');
+const express = require('express')
+const mongoose = require('mongoose')
+const helmet = require('helmet')
+const cookieParser = require('cookie-parser')
+const { errors } = require('celebrate')
+const cors = require('cors')
+const responseTime = require('response-time')
+const rateLimit = require('express-rate-limit')
+const routes = require('./routes')
+const errorsHandler = require('./middlewares/handelError')
+const { requestLogger, errorLogger } = require('./middlewares/logger')
+const { PORT, DB_PATH, BASE_URL, MAX_AUTH_ATTEMPTS } = require('./utils/config')
+const { USER_MESSAGE, DEFAULT_ERROR_MESSAGES } = require('./utils/consts')
 
-const app = express();
-app.use(cors({
-  origin: ['http://localhost:3001',
-    'http://localhost:3000',
-    'https://api.diplom-sukhov.nomoredomains.rocks',
-    'http://api.diplom-sukhov.nomoredomains.rocks',
-    'https://diplom-sukhov.nomoredomains.rocks',
-    'http://diplom-sukhov.nomoredomains.rocks',
-  ],
-  credentials: true,
-  preflightContinue: false,
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  allowedHeaders: ['Content-Type', 'Authorization', 'Origin'],
-  optionsSuccessStatus: 204,
-}));
+const app = express()
 
-app.use(helmet());
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: MAX_AUTH_ATTEMPTS,
+  message: DEFAULT_ERROR_MESSAGES.MAX_LIMIT_REACHED,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+})
 
-/* подключаемся к серверу mongo **/
-mongoose.connect(MONGO_URL);
+app.use(helmet())
+app.use(express.json())
+app.use(cookieParser())
+app.use(
+  cors({
+    origin: BASE_URL,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    credentials: true,
+  })
+)
+app.use(authLimiter)
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+app.use(responseTime(requestLogger))
 
-/* подключаем мидлвары, роуты и всё остальное... **/
-app.use(requestLogger);
+app.use(routes)
+app.use(errorLogger)
+app.use(errors())
+app.use(errorsHandler)
 
-app.use(limiter);
+mongoose.connect(DB_PATH)
 
-app.use(routes);
+const db = mongoose.connection
 
-app.use(errorLogger);
-
-app.use(errors());
-
-app.use(errorHandler);
+db.on('error', console.error.bind(console, 'connection error:'))
+db.once('open', () => {
+  console.log(USER_MESSAGE.DB_CONNECT)
+})
 
 app.listen(PORT, () => {
-  console.log(`app слушает порт: ${PORT}`);
-});
+  console.log(`${USER_MESSAGE.APP_RUN} ${PORT}`)
+})

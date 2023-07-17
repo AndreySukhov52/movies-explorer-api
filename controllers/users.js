@@ -1,98 +1,75 @@
-const { StatusCodes } = require('http-status-codes');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const User = require('../models/user');
-const NotFoundError = require('../errors/notFound-error');
-const BadRequestError = require('../errors/badRequest-error');
-const ConflictError = require('../errors/conflict-error');
-
-const { NODE_ENV, JWT_SECRET } = process.env;
-
-function getUserMe(req, res, next) {
-  User.findById(req.user._id)
-    .orFail(() => {
-      throw new NotFoundError('Пользователь не найден');
-    })
-    .then((user) => res.status(200).send(user))
-    .catch(next);
-}
+const bcrypt = require('bcryptjs')
+const jwt = require('jsonwebtoken')
+const Users = require('../models/user')
+const { handleError } = require('../utils/errors')
+const { JWT_SECRET } = require('../utils/config')
+const { USER_MESSAGE } = require('../utils/consts')
 
 const createUser = (req, res, next) => {
-  const {
-    name, email, password,
-  } = req.body;
+  const { name, email, password } = req.body
+  return bcrypt
+    .hash(password, 10)
+    .then((hash) => Users.create({ name, email, password: hash }))
+    .then((user) =>
+      res.status(201).send({
+        name: user.name,
+        email: user.email,
+      })
+    )
+    .catch((err) => handleError(err, next))
+}
 
-  bcrypt.hash(password, 10)
-    .then((hash) => {
-      User
-        .create({
-          name, email, password: hash,
-        })
-        .then((user) => {
-          const { password: userPassword, ...userData } = user.toObject();
-          /* убираем поле password из объекта пользователя **/
-          res.status(StatusCodes.CREATED).send(userData);
-        })
-        .catch((err) => {
-          if (err.name === 'ValidationError') {
-            next(new BadRequestError('Переданы некорректные данные при создании пользователя '));
-          } else if (err.code === 11000) {
-            next(new ConflictError('Пользователь с таким email уже зарегистрирован'));
-          } else {
-            next(err);
-          }
-        });
-    })
-    .catch(next);
-};
+const updateUser = (req, res, next, updateData) =>
+  Users.findByIdAndUpdate(req.user._id, updateData, {
+    new: true,
+    runValidators: true,
+  })
+    .orFail()
+    .then((user) => res.send({ email: user.email, name: user.name }))
+    .catch((err) => handleError(err, next))
 
-const updateUser = (req, res, next) => {
-  const { name, email } = req.body;
-  User.findByIdAndUpdate(req.user._id, { name, email }, { new: true, runValidators: true })
-    .then((user) => {
-      if (!user) {
-        throw new NotFoundError('Пользователь по указанному _id не найден');
-      }
-      return res.status(200).send(user);
-    })
-    .catch((err) => {
-      if (err.name === 'ValidationError') {
-        next(new BadRequestError('Переданы некорректные данные при обновлении профиля'));
-      } else if (err.code === 11000) {
-        next(new ConflictError('Пользователь с таким email уже зарегистрирован'));
-      } else {
-        next(err);
-      }
-    });
-};
+const updateProfile = (req, res, next) => {
+  const { name, email } = req.body
+  return updateUser(req, res, next, { name, email })
+}
+
+const findUser = (req, res, next, userId) =>
+  Users.findById(userId)
+    .orFail()
+    .then((user) => res.send({ email: user.email, name: user.name }))
+    .catch((err) => handleError(err, next))
+
+const getCurrentUser = (req, res, next) =>
+  findUser(req, res, next, req.user._id)
 
 const login = (req, res, next) => {
-  const { email, password } = req.body;
-  User
-    .findUserByCredentials(email, password)
+  const { email, password } = req.body
+  return Users.findUserByCredentials(email, password)
     .then((user) => {
-      const token = jwt.sign({ _id: user._id }, NODE_ENV === 'production' ? JWT_SECRET : 'dev-secret', { expiresIn: '7d' });
-      const { password: userPassword, ...userData } = user.toObject();
+      const token = jwt.sign({ _id: user._id }, JWT_SECRET, { expiresIn: '7d' })
       res
         .cookie('jwt', token, {
           maxAge: 3600000 * 24 * 7,
           httpOnly: true,
-          sameSite: 'none',
-          secure: true,
+          sameSite: true,
         })
-        .send(userData);
+        .send({ message: `${USER_MESSAGE.ON_LOGIN}, ${user.name}` })
     })
-    .catch(next);
-};
-const logout = (req, res) => {
-  res.clearCookie('jwt').send({ message: 'Вы вышли' });
-};
+    .catch((err) => handleError(err, next))
+}
 
-/* Экспорт модулей **/
+const logout = (req, res) =>
+  res
+    .clearCookie('jwt', {
+      httpOnly: true,
+      sameSite: true,
+    })
+    .send({ message: USER_MESSAGE.ON_LOGOUT })
+
 module.exports = {
-  getUserMe,
   createUser,
-  updateUser,
+  updateProfile,
+  getCurrentUser,
   login,
   logout,
-};
+}
